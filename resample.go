@@ -22,12 +22,13 @@ For usage details please see the code snippet in the cmd folder.
 package resample
 
 /*
-#cgo LDFLAGS: -lsoxr
+#cgo pkg-config: soxr
 
 #include <stdlib.h>
 #include "soxr.h"
 */
 import "C"
+
 import (
 	"errors"
 	"io"
@@ -174,32 +175,13 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 	var soxErr C.soxr_error_t
 	var read, done C.size_t = 0, 0
 	var written int
-	for int(done) < framesOut {
-		soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), &read, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
-		if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
-			err = errors.New(C.GoString(soxErr))
-			goto cleanup
-		}
-		if int(read) == framesIn && int(done) < framesOut {
-			// Indicate end of input to the resampler
-			var d C.size_t = 0
-			soxErr = C.soxr_process(r.resampler, C.soxr_in_t(nil), C.size_t(0), nil, C.soxr_out_t(dataOut), C.size_t(framesOut), &d)
-			if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
-				err = errors.New(C.GoString(soxErr))
-				goto cleanup
-			}
-			done += d
-			break
-		}
+	soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), &read, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
+	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
+		err = errors.New(C.GoString(soxErr))
+		goto cleanup
 	}
 	written, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
 	i = int(float64(written) * (r.inRate / r.outRate))
-	// If we have read all input and flushed all output, avoid to report short writes due
-	// to output frames missing because of downsampling or other odd reasons.
-	if err == nil && framesIn == int(read) && framesOut == int(done) {
-		i = len(p)
-	}
-
 cleanup:
 	C.free(dataIn)
 	C.free(dataOut)
