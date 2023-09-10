@@ -1,3 +1,3 @@
-module github.com/zaf/resample
+module github.com/emkons/resample
 
 go 1.17
